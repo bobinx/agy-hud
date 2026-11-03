@@ -1,6 +1,8 @@
 import { Config } from "./config";
 import { truncateColumns, visibleLen } from "./ansi";
 import { Cache, matchModel, usagePercent as quotaUsagePercent } from "./quota";
+import { progressBar, progressBarWithColor } from "./progressbar";
+import { StepState, renderStepSegment } from "./metrics";
 import path from "node:path";
 
 const colorReset = "\x1b[0m";
@@ -78,6 +80,7 @@ export interface RenderOptions {
   config: Config;
   quota?: Cache | null;
   gitBranch?: string;
+  stepState?: StepState | null;
   now?: Date;
 }
 
@@ -137,19 +140,33 @@ export function render(payload: Payload, opts: RenderOptions): string {
   const ctxPct = contextPercent(payload.context_window);
   const stateLabel = state(payload.agent_state ?? "");
   const quota = quotaInfo(opts.quota, modelDisplay, payload.quota, opts.now ?? new Date());
+  const stepSegment = renderStepSegment(opts.stepState, payload, config);
   if (config.multiline) {
-    return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel);
+    return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
   }
-  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel);
+  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel, stepSegment);
 }
 
-function renderMultiline(payload: Payload, config: Config, width: number, modelSegment: string, ctxPct: number, quota: QuotaDisplay, branch: string, stateLabel: string): string {
+function renderMultiline(
+  payload: Payload,
+  config: Config,
+  width: number,
+  modelSegment: string,
+  ctxPct: number,
+  quota: QuotaDisplay,
+  branch: string,
+  stateLabel: string,
+  stepSegment: string = ""
+): string {
   const line1Parts = [colorize(modelSegment, colorBlue, config.color)];
   if (config.showCWD && payload.cwd) {
     line1Parts.push(colorize(withIcon(config, " ", "") + path.basename(payload.cwd), colorYellow, config.color));
   }
   if (config.showGitBranch && branch !== "") {
     line1Parts.push(colorize(renderGitSegment(branch, config), colorMagenta, config.color));
+  }
+  if (stepSegment !== "") {
+    line1Parts.push(colorize(stepSegment, colorMuted, config.color));
   }
   const stateText = config.showAgentState ? colorize(stateLabel, stateColor(stateLabel), config.color) : "";
   const titleText = renderTitle(payload.conversation_title, config);
@@ -177,7 +194,7 @@ function renderMultiline(payload: Payload, config: Config, width: number, modelS
 
   let ctx = "Context ";
   if (config.showProgressBar) {
-    ctx += `${progressBar(ctxPct, 10, config.color)} `;
+    ctx += `${progressBar(ctxPct, 10, config.color, config.progressBarStyle)} `;
   }
   ctx += contextValue(config, payload.context_window, ctxPct);
 
@@ -223,8 +240,18 @@ function renderMultiline(payload: Payload, config: Config, width: number, modelS
   return `${line1}\n${line2}`;
 }
 
-function renderSingleLine(payload: Payload, config: Config, width: number, modelSegment: string, ctxPct: number, quota: QuotaDisplay, stateLabel: string): string {
+function renderSingleLine(
+  payload: Payload,
+  config: Config,
+  width: number,
+  modelSegment: string,
+  ctxPct: number,
+  quota: QuotaDisplay,
+  stateLabel: string,
+  stepSegment: string = ""
+): string {
   const coloredBadge = colorize(modelSegment, colorBlue, config.color);
+  const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";
   const ctx = `Ctx ${contextValue(config, payload.context_window, ctxPct)}`;
   let tokens = tokenDetail(payload.context_window);
   if (tokens !== "" && config.contextValue === "percent") {
@@ -245,9 +272,12 @@ function renderSingleLine(payload: Payload, config: Config, width: number, model
   const titleText = renderTitle(payload.conversation_title, config);
   let bar = "";
   if (config.showProgressBar) {
-    bar = progressBar(ctxPct, 10, config.color);
+    bar = progressBar(ctxPct, 10, config.color, config.progressBarStyle);
   }
   const levels = [
+    [coloredBadge, stepText, ctx, tokens, bar, usage, titleText, stateText, costText],
+    [coloredBadge, stepText, ctx, tokens, bar, usage, stateText, costText],
+    [coloredBadge, stepText, ctx, bar, usage, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage, titleText, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage, stateText],
@@ -618,7 +648,7 @@ function usageValue(config: Config, usagePct: number): string {
 
 function usageBar(config: Config, usagePct: number, width = 8): string {
   const fillPct = config.usageValue === "remaining" ? 100 - usagePct : usagePct;
-  return progressBarWithColor(fillPct, usagePct, width, config.color);
+  return progressBarWithColor(fillPct, usagePct, width, config.color, config.progressBarStyle);
 }
 
 function tokenDetail(ctx: Payload["context_window"]): string {
@@ -641,30 +671,6 @@ function formatTokens(n: number): string {
     return `${formatInt((n + 500) / 1000)}k`;
   }
   return formatInt(n);
-}
-
-function progressBar(pct: number, width: number, color: boolean): string {
-  return progressBarWithColor(pct, pct, width, color);
-}
-
-function progressBarWithColor(fillPct: number, colorPct: number, width: number, color: boolean): string {
-  fillPct = clampInt(fillPct);
-  colorPct = clampInt(colorPct);
-  let filled = Math.trunc((fillPct / 100) * width + 0.5);
-  if (filled < 0) filled = 0;
-  if (filled > width) filled = width;
-  const bar = `${"█".repeat(filled)}${"░".repeat(width - filled)}`;
-  if (!color) {
-    return bar;
-  }
-  return colorize(bar, percentageColor(colorPct), true);
-}
-
-function percentageColor(pct: number): string {
-  if (pct >= 90) return colorRed;
-  if (pct >= 75) return colorOrange;
-  if (pct >= 50) return colorYellow;
-  return colorGreen;
 }
 
 function state(raw: string): string {

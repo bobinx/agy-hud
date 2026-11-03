@@ -9,6 +9,7 @@ import { RefreshResult, refreshQuota } from "./quotaProbe";
 import { queryUsage, UsageOutcome } from "./usageCommand";
 import { branch as gitBranch } from "./gitinfo";
 import { Payload, render } from "./statusline";
+import { updateStepState } from "./metrics";
 import { DoctorDeps, collectDoctorReport, formatDoctorReport } from "./doctor";
 
 export const version = "0.1.14";
@@ -19,6 +20,7 @@ const untouchedQuotaRefreshMs = 30 * 1000;
 interface StatuslineRefreshState {
   conversationId: string;
   agentState: string;
+  stepCount?: number;
   lastActivityAt?: string;
 }
 
@@ -45,11 +47,26 @@ export function renderStatusline(input: string, cfg: Config = defaultConfig(), c
       branch = sanitizedBranch(process.env.AGY_HUD_GIT_BRANCH ?? "");
     }
   }
+  const stateCandidates = quotaCacheReadCandidates();
+  const prevState = loadRefreshStateWithFallback(stateCandidates);
+  const currentStepState = updateStepState(prevState, payload);
+  if (stateCandidates.length > 0) {
+    const sp = refreshStatePath(stateCandidates[0]);
+    if (sp !== "") {
+      saveStatuslineRefreshState(sp, {
+        conversationId: currentStepState.conversationId ?? "",
+        agentState: currentStepState.agentState ?? "",
+        stepCount: currentStepState.stepCount,
+        lastActivityAt: prevState?.lastActivityAt
+      });
+    }
+  }
   try {
     return render(payload, {
       config: cfg,
       quota: cache,
-      gitBranch: branch
+      gitBranch: branch,
+      stepState: currentStepState
     });
   } catch {
     return "agy-hud";
@@ -804,6 +821,7 @@ function loadStatuslineRefreshState(statePath: string): StatuslineRefreshState |
     return {
       conversationId: typeof parsed.conversationId === "string" ? parsed.conversationId : "",
       agentState: typeof parsed.agentState === "string" ? parsed.agentState : "",
+      stepCount: typeof parsed.stepCount === "number" ? parsed.stepCount : 1,
       lastActivityAt: typeof parsed.lastActivityAt === "string" ? parsed.lastActivityAt : undefined
     };
   } catch {
@@ -831,9 +849,11 @@ function mergeStatuslineRefreshState(
   activityRefresh: boolean,
   now: Date
 ): StatuslineRefreshState {
+  const stepState = updateStepState(prevState, payload);
   const next: StatuslineRefreshState = {
-    conversationId: prevState?.conversationId ?? "",
-    agentState: prevState?.agentState ?? "",
+    conversationId: stepState.conversationId ?? "",
+    agentState: stepState.agentState ?? "",
+    stepCount: stepState.stepCount,
     lastActivityAt: prevState?.lastActivityAt
   };
   if (payload) {

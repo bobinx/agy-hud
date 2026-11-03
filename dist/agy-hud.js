@@ -183,6 +183,8 @@ function defaultConfig() {
     showTitle: false,
     showMode: true,
     showIcons: true,
+    progressBarStyle: "block",
+    showStepCount: true,
     contextValue: "percent",
     usageValue: "remaining",
     debug: false
@@ -222,6 +224,8 @@ function merge(base, patch) {
   if (typeof patch.show_title === "boolean") base.showTitle = patch.show_title;
   if (typeof patch.show_mode === "boolean") base.showMode = patch.show_mode;
   if (typeof patch.show_icons === "boolean") base.showIcons = patch.show_icons;
+  if (typeof patch.progress_bar_style === "string" && patch.progress_bar_style !== "") base.progressBarStyle = patch.progress_bar_style;
+  if (typeof patch.show_step_count === "boolean") base.showStepCount = patch.show_step_count;
   if (typeof patch.context_value === "string" && patch.context_value !== "") base.contextValue = patch.context_value;
   if (typeof patch.usage_value === "string" && patch.usage_value !== "") base.usageValue = patch.usage_value;
   if (typeof patch.debug === "boolean") base.debug = patch.debug;
@@ -795,6 +799,92 @@ function truncateColumns(input, width) {
   return result;
 }
 
+// src/progressbar.ts
+function progressBar(pct, width, color, style = "block") {
+  return progressBarWithColor(pct, pct, width, color, style);
+}
+function progressBarWithColor(fillPct, colorPct, width, color, style = "block") {
+  fillPct = clampInt(fillPct);
+  colorPct = clampInt(colorPct);
+  let filled = Math.trunc(fillPct / 100 * width + 0.5);
+  if (filled < 0) filled = 0;
+  if (filled > width) filled = width;
+  let fChar = "\u2588";
+  let eChar = "\u2591";
+  if (style === "line") {
+    fChar = "\u2501";
+    eChar = "\u2500";
+  } else if (style === "rectangle") {
+    fChar = "\u25AC";
+    eChar = "\u25AC";
+  }
+  const filledStr = fChar.repeat(filled);
+  const emptyStr = eChar.repeat(width - filled);
+  if (!color) {
+    if (style === "rectangle") {
+      return `${filledStr}${" ".repeat(width - filled)}`;
+    }
+    return `${filledStr}${emptyStr}`;
+  }
+  const colorReset2 = "\x1B[0m";
+  if (style === "block") {
+    const bar = `${filledStr}${emptyStr}`;
+    return `${percentageColor(colorPct)}${bar}${colorReset2}`;
+  }
+  const colorMuted2 = "\x1B[90m";
+  const fColored = filledStr ? `${percentageColor(colorPct)}${filledStr}${colorReset2}` : "";
+  const eColored = emptyStr ? `${colorMuted2}${emptyStr}${colorReset2}` : "";
+  return `${fColored}${eColored}`;
+}
+function clampInt(n) {
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return Math.trunc(n);
+}
+function percentageColor(pct) {
+  if (pct >= 90) return "\x1B[31m";
+  if (pct >= 75) return "\x1B[38;5;208m";
+  if (pct >= 50) return "\x1B[33m";
+  return "\x1B[32m";
+}
+
+// src/metrics.ts
+function updateStepState(prevState, payload) {
+  const conversationId = (payload?.conversation_id ?? "").trim();
+  const rawAgentState = (payload?.agent_state ?? "").trim().toLowerCase();
+  const prevConvId = prevState?.conversationId ?? "";
+  const prevAgentState = prevState?.agentState ?? "";
+  let stepCount = typeof prevState?.stepCount === "number" ? prevState.stepCount : 1;
+  const convChanged = conversationId !== "" && conversationId !== prevConvId;
+  if (convChanged) {
+    stepCount = 1;
+  }
+  const becameActive = rawAgentState !== "" && rawAgentState !== "idle" && rawAgentState !== prevAgentState;
+  if (becameActive) {
+    stepCount += 1;
+  }
+  return {
+    conversationId,
+    agentState: rawAgentState,
+    stepCount,
+    lastActivityAt: prevState?.lastActivityAt
+  };
+}
+function renderStepSegment(state2, payload, config) {
+  if (!config.showStepCount) {
+    return "";
+  }
+  const raw = payload;
+  const rawStep = raw?.step ?? raw?.step_index ?? raw?.turn ?? raw?.turn_index;
+  if (typeof rawStep === "number" && rawStep > 0) {
+    return `Step ${rawStep}`;
+  }
+  if (typeof state2?.stepCount === "number" && state2.stepCount > 0) {
+    return `Step ${state2.stepCount}`;
+  }
+  return "";
+}
+
 // src/statusline.ts
 var import_node_path4 = __toESM(require("node:path"));
 var colorReset = "\x1B[0m";
@@ -803,7 +893,6 @@ var colorGreen = "\x1B[32m";
 var colorYellow = "\x1B[33m";
 var colorCyan = "\x1B[36m";
 var colorMagenta = "\x1B[35m";
-var colorRed = "\x1B[31m";
 var colorOrange = "\x1B[38;5;208m";
 var colorMuted = "\x1B[90m";
 function shortModelName(display) {
@@ -852,18 +941,22 @@ function render(payload, opts) {
   const ctxPct = contextPercent(payload.context_window);
   const stateLabel = state(payload.agent_state ?? "");
   const quota = quotaInfo(opts.quota, modelDisplay, payload.quota, opts.now ?? /* @__PURE__ */ new Date());
+  const stepSegment = renderStepSegment(opts.stepState, payload, config);
   if (config.multiline) {
-    return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel);
+    return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
   }
-  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel);
+  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel, stepSegment);
 }
-function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, branch2, stateLabel) {
+function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, branch2, stateLabel, stepSegment = "") {
   const line1Parts = [colorize(modelSegment, colorBlue, config.color)];
   if (config.showCWD && payload.cwd) {
     line1Parts.push(colorize(withIcon(config, "\uF07C ", "") + import_node_path4.default.basename(payload.cwd), colorYellow, config.color));
   }
   if (config.showGitBranch && branch2 !== "") {
     line1Parts.push(colorize(renderGitSegment(branch2, config), colorMagenta, config.color));
+  }
+  if (stepSegment !== "") {
+    line1Parts.push(colorize(stepSegment, colorMuted, config.color));
   }
   const stateText = config.showAgentState ? colorize(stateLabel, stateColor(stateLabel), config.color) : "";
   const titleText = renderTitle(payload.conversation_title, config);
@@ -889,7 +982,7 @@ function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, br
   line1 = fit(line1, width);
   let ctx = "Context ";
   if (config.showProgressBar) {
-    ctx += `${progressBar(ctxPct, 10, config.color)} `;
+    ctx += `${progressBar(ctxPct, 10, config.color, config.progressBarStyle)} `;
   }
   ctx += contextValue(config, payload.context_window, ctxPct);
   let usage2 = "";
@@ -934,8 +1027,9 @@ function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, br
   return `${line1}
 ${line2}`;
 }
-function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel) {
+function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel, stepSegment = "") {
   const coloredBadge = colorize(modelSegment, colorBlue, config.color);
+  const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";
   const ctx = `Ctx ${contextValue(config, payload.context_window, ctxPct)}`;
   let tokens = tokenDetail(payload.context_window);
   if (tokens !== "" && config.contextValue === "percent") {
@@ -956,9 +1050,12 @@ function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, s
   const titleText = renderTitle(payload.conversation_title, config);
   let bar = "";
   if (config.showProgressBar) {
-    bar = progressBar(ctxPct, 10, config.color);
+    bar = progressBar(ctxPct, 10, config.color, config.progressBarStyle);
   }
   const levels = [
+    [coloredBadge, stepText, ctx, tokens, bar, usage2, titleText, stateText, costText],
+    [coloredBadge, stepText, ctx, tokens, bar, usage2, stateText, costText],
+    [coloredBadge, stepText, ctx, bar, usage2, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage2, titleText, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage2, stateText, costText],
     [coloredBadge, ctx, tokens, bar, usage2, stateText],
@@ -1229,13 +1326,13 @@ function contextPercent(ctx) {
   const inputTokens = ctx?.total_input_tokens ?? 0;
   const windowSize = ctx?.context_window_size ?? 0;
   if (Number.isFinite(inputTokens) && Number.isFinite(windowSize) && inputTokens > 0 && windowSize > 0) {
-    return clampInt(Math.trunc(inputTokens / windowSize * 100 + 0.5));
+    return clampInt2(Math.trunc(inputTokens / windowSize * 100 + 0.5));
   }
   const upstream = ctx?.used_percentage ?? 0;
   if (!Number.isFinite(upstream)) {
     return 0;
   }
-  return clampInt(Math.trunc(upstream + 0.5));
+  return clampInt2(Math.trunc(upstream + 0.5));
 }
 function usageLabel(config, quota, withBar) {
   if (quota.windows.length > 1) {
@@ -1268,7 +1365,7 @@ function usageValue(config, usagePct) {
 }
 function usageBar(config, usagePct, width = 8) {
   const fillPct = config.usageValue === "remaining" ? 100 - usagePct : usagePct;
-  return progressBarWithColor(fillPct, usagePct, width, config.color);
+  return progressBarWithColor(fillPct, usagePct, width, config.color, config.progressBarStyle);
 }
 function tokenDetail(ctx) {
   const total = ctx?.total_input_tokens;
@@ -1289,27 +1386,6 @@ function formatTokens(n) {
     return `${formatInt((n + 500) / 1e3)}k`;
   }
   return formatInt(n);
-}
-function progressBar(pct, width, color) {
-  return progressBarWithColor(pct, pct, width, color);
-}
-function progressBarWithColor(fillPct, colorPct, width, color) {
-  fillPct = clampInt(fillPct);
-  colorPct = clampInt(colorPct);
-  let filled = Math.trunc(fillPct / 100 * width + 0.5);
-  if (filled < 0) filled = 0;
-  if (filled > width) filled = width;
-  const bar = `${"\u2588".repeat(filled)}${"\u2591".repeat(width - filled)}`;
-  if (!color) {
-    return bar;
-  }
-  return colorize(bar, percentageColor(colorPct), true);
-}
-function percentageColor(pct) {
-  if (pct >= 90) return colorRed;
-  if (pct >= 75) return colorOrange;
-  if (pct >= 50) return colorYellow;
-  return colorGreen;
 }
 function state(raw) {
   switch (raw.toLowerCase()) {
@@ -1354,7 +1430,7 @@ function fit(input, width) {
   }
   return truncateColumns(input, width);
 }
-function clampInt(n) {
+function clampInt2(n) {
   if (n < 0) return 0;
   if (n > 100) return 100;
   return n;
@@ -1742,11 +1818,26 @@ function renderStatusline(input, cfg = defaultConfig(), cache = null) {
       branch2 = sanitizedBranch(process.env.AGY_HUD_GIT_BRANCH ?? "");
     }
   }
+  const stateCandidates = quotaCacheReadCandidates();
+  const prevState = loadRefreshStateWithFallback(stateCandidates);
+  const currentStepState = updateStepState(prevState, payload);
+  if (stateCandidates.length > 0) {
+    const sp = refreshStatePath(stateCandidates[0]);
+    if (sp !== "") {
+      saveStatuslineRefreshState(sp, {
+        conversationId: currentStepState.conversationId ?? "",
+        agentState: currentStepState.agentState ?? "",
+        stepCount: currentStepState.stepCount,
+        lastActivityAt: prevState?.lastActivityAt
+      });
+    }
+  }
   try {
     return render(payload, {
       config: cfg,
       quota: cache,
-      gitBranch: branch2
+      gitBranch: branch2,
+      stepState: currentStepState
     });
   } catch {
     return "agy-hud";
@@ -2350,6 +2441,7 @@ function loadStatuslineRefreshState(statePath) {
     return {
       conversationId: typeof parsed.conversationId === "string" ? parsed.conversationId : "",
       agentState: typeof parsed.agentState === "string" ? parsed.agentState : "",
+      stepCount: typeof parsed.stepCount === "number" ? parsed.stepCount : 1,
       lastActivityAt: typeof parsed.lastActivityAt === "string" ? parsed.lastActivityAt : void 0
     };
   } catch {
@@ -2368,9 +2460,11 @@ function saveStatuslineRefreshState(statePath, state2) {
   }
 }
 function mergeStatuslineRefreshState(prevState, payload, activityRefresh, now) {
+  const stepState = updateStepState(prevState, payload);
   const next = {
-    conversationId: prevState?.conversationId ?? "",
-    agentState: prevState?.agentState ?? "",
+    conversationId: stepState.conversationId ?? "",
+    agentState: stepState.agentState ?? "",
+    stepCount: stepState.stepCount,
     lastActivityAt: prevState?.lastActivityAt
   };
   if (payload) {

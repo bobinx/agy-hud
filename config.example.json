@@ -11,6 +11,8 @@
   "show_title": false,
   "show_mode": true,
   "show_icons": true,
+  "progress_bar_style": "line",
+  "show_step_count": true,
   "context_value": "percent",
   "usage_value": "remaining"
 }
