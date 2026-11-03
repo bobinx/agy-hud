@@ -103,3 +103,56 @@ test("render incorporates step count and custom progress bar style", () => {
   assert.match(single, /Step 4/);
   assert.match(single, /━━━━──────/);
 });
+
+test("single-line mode includes cwd, git branch, and quota bar", () => {
+  const config = {
+    ...defaultConfig(),
+    multiline: false,
+    color: false,
+    showIcons: false,
+    showCWD: true,
+    showGitBranch: true,
+    showProgressBar: true,
+    progressBarStyle: "line",
+    showStepCount: true
+  };
+  const payload: Payload = {
+    model: { display_name: "Gemini 3.5 Flash" },
+    plan_tier: "Google AI Pro",
+    cwd: "/Users/xb/Projects/forks/agy-hud",
+    agent_state: "working",
+    terminal_width: 200,
+    context_window: { used_percentage: 35 },
+    quota: { "gemini-5h": { remaining_fraction: 0.8, reset_in_seconds: 3600 } }
+  };
+
+  const out = render(payload, {
+    config,
+    gitBranch: "xb-main",
+    stepState: { stepCount: 2 }
+  });
+
+  assert.match(out, /agy-hud/);
+  assert.match(out, /xb-main/);
+  assert.match(out, /Step 2/);
+  assert.match(out, /Ctx 35%/);
+  assert.match(out, /Usage ━━━━━━── 80% left/);
+});
+
+test("context_value remaining displays remaining percentage and inverts progress bar", () => {
+  const config = {
+    ...defaultConfig(),
+    color: false,
+    showIcons: false,
+    contextValue: "remaining",
+    progressBarStyle: "line"
+  };
+  const payload: Payload = {
+    model: { display_name: "Gemini 3.5 Flash" },
+    context_window: { used_percentage: 35 },
+    terminal_width: 120
+  };
+
+  const out = render(payload, { config });
+  assert.match(out, /Context ━━━━━━━─── 65%/);
+});

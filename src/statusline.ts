@@ -144,7 +144,7 @@ export function render(payload: Payload, opts: RenderOptions): string {
   if (config.multiline) {
     return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
   }
-  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, stateLabel, stepSegment);
+  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
 }
 
 function renderMultiline(
@@ -194,7 +194,8 @@ function renderMultiline(
 
   let ctx = "Context ";
   if (config.showProgressBar) {
-    ctx += `${progressBar(ctxPct, 10, config.color, config.progressBarStyle)} `;
+    const fillPct = config.contextValue === "remaining" ? 100 - ctxPct : ctxPct;
+    ctx += `${progressBarWithColor(fillPct, ctxPct, 10, config.color, config.progressBarStyle)} `;
   }
   ctx += contextValue(config, payload.context_window, ctxPct);
 
@@ -247,11 +248,15 @@ function renderSingleLine(
   modelSegment: string,
   ctxPct: number,
   quota: QuotaDisplay,
+  branch: string = "",
   stateLabel: string,
   stepSegment: string = ""
 ): string {
   const coloredBadge = colorize(modelSegment, colorBlue, config.color);
+  const cwdText = config.showCWD && payload.cwd ? colorize(withIcon(config, " ", "") + path.basename(payload.cwd), colorYellow, config.color) : "";
+  const gitText = config.showGitBranch && branch !== "" ? colorize(renderGitSegment(branch, config), colorMagenta, config.color) : "";
   const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";
+  const ctxValPct = config.contextValue === "remaining" ? 100 - ctxPct : ctxPct;
   const ctx = `Ctx ${contextValue(config, payload.context_window, ctxPct)}`;
   let tokens = tokenDetail(payload.context_window);
   if (tokens !== "" && config.contextValue === "percent") {
@@ -259,33 +264,43 @@ function renderSingleLine(
   } else {
     tokens = "";
   }
-  let usage = "";
+  let usageWithBar = "";
+  let usageNoBar = "";
   if (quota.hasQuota) {
-    let text = usageLabel(config, quota, false);
+    let textWithBar = usageLabel(config, quota, true);
+    let textNoBar = usageLabel(config, quota, false);
     if (quota.windows.length <= 1 && quota.reset !== "") {
-      text += resetSuffix(config, quota.reset);
+      textWithBar += resetSuffix(config, quota.reset);
+      textNoBar += resetSuffix(config, quota.reset);
     }
-    usage = colorize(text, colorMuted, config.color);
+    usageWithBar = colorize(textWithBar, colorMuted, config.color);
+    usageNoBar = colorize(textNoBar, colorMuted, config.color);
   }
   const stateText = config.showAgentState ? colorize(stateLabel, stateColor(stateLabel), config.color) : "";
   const costText = renderCost(payload.cost, config);
   const titleText = renderTitle(payload.conversation_title, config);
   let bar = "";
   if (config.showProgressBar) {
-    bar = progressBar(ctxPct, 10, config.color, config.progressBarStyle);
+    const fillPct = config.contextValue === "remaining" ? 100 - ctxPct : ctxPct;
+    bar = progressBarWithColor(fillPct, ctxPct, 10, config.color, config.progressBarStyle);
   }
   const levels = [
-    [coloredBadge, stepText, ctx, tokens, bar, usage, titleText, stateText, costText],
-    [coloredBadge, stepText, ctx, tokens, bar, usage, stateText, costText],
-    [coloredBadge, stepText, ctx, bar, usage, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usage, titleText, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usage, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usage, stateText],
-    [coloredBadge, ctx, bar, usage, stateText],
-    [coloredBadge, ctx, usage, stateText],
+    [coloredBadge, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, cwdText, gitText, stepText, ctx, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, gitText, stepText, ctx, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, cwdText, gitText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, cwdText, gitText, ctx, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, gitText, ctx, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, ctx, bar, usageWithBar, titleText, stateText, costText],
+    [coloredBadge, cwdText, gitText, ctx, tokens, bar, usageNoBar, titleText, stateText, costText],
+    [coloredBadge, ctx, tokens, bar, usageNoBar, titleText, stateText, costText],
+    [coloredBadge, ctx, tokens, bar, usageNoBar, titleText, stateText],
+    [coloredBadge, ctx, bar, usageNoBar, stateText],
+    [coloredBadge, ctx, usageNoBar, stateText],
     [coloredBadge, ctx, stateText],
     [ctx, stateText],
-    [`${formatInt(ctxPct)}%`, stateLabel]
+    [`${formatInt(ctxValPct)}%`, stateLabel]
   ];
   for (const parts of levels) {
     const line = join(...parts);
@@ -293,7 +308,7 @@ function renderSingleLine(
       return line;
     }
   }
-  return fit(`${formatInt(ctxPct)}% ${stateLabel}`, width);
+  return fit(`${formatInt(ctxValPct)}% ${stateLabel}`, width);
 }
 
 function renderModelSegment(shortModel: string, rawPlan: string, config: Config): string {
@@ -585,6 +600,8 @@ function formatResetDuration(seconds: number): string {
 function contextValue(config: Config, ctx: Payload["context_window"], pct: number): string {
   const tokens = tokenDetail(ctx);
   switch (config.contextValue) {
+    case "remaining":
+      return `${formatInt(100 - pct)}%`;
     case "tokens":
       if (tokens !== "") {
         return tokens.replace(/^\(/, "").replace(/\)$/, "");

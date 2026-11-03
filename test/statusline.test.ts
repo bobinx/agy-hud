@@ -708,7 +708,7 @@ test("multiline drops the conversation title before cost", () => {
 test("single-line shows the conversation title before state and drops it first", () => {
   const config = { ...defaultConfig(), multiline: false, color: false, showIcons: false, showTitle: true };
   const payload: Payload = { ...titled("Fix login", 120), context_window: { used_percentage: 12 } };
-  assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  Ctx 12%  █░░░░░░░░░  Fix login  Idle");
+  assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  project  Ctx 12%  █░░░░░░░░░  Fix login  Idle");
   assert.equal(render({ ...payload, terminal_width: 45 }, { config }), "Sonnet 4.6 | Pro  Ctx 12%  █░░░░░░░░░  Idle");
 });
 
