@@ -172,13 +172,15 @@ test("single-line decouples and drops plan tier before model name on narrow widt
     cwd: "/workspace/project",
     agent_state: "idle",
     context_window: { used_percentage: 10 },
-    terminal_width: 28
+    terminal_width: 40
   };
 
   const out = render(payload, { config, gitBranch: "main" });
-  // At width 28, plan tier ("| Pro") is dropped while model name is preserved
+  // At width 40, plan tier ("| Pro") is dropped early while CWD, branch, and model are preserved
   assert.doesNotMatch(out, /Pro/);
   assert.match(out, /3\.5 Flash/);
+  assert.match(out, /project/);
+  assert.match(out, /main/);
   assert.match(out, /Ctx 10%/);
 });
 

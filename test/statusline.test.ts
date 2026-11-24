@@ -587,7 +587,7 @@ test("single-line drops cost before quota at boundary width", () => {
     quota: { "3p-5h": { remaining_fraction: 0.01 } }, cost: { total_usd: 0 }
   };
   const config = { ...defaultMultiline(), multiline: false, color: false, showIcons: false };
-  assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  Ctx 12%  Usage 1% left  Idle");
+  assert.equal(render(payload, { config }), "Sonnet 4.6  Ctx 12%  Usage 1% left  Idle");
 });
 
 test("cost estimates are marked in both layouts using the provided total", () => {
@@ -710,7 +710,7 @@ test("single-line shows the conversation title before state and drops it first",
   const config = { ...defaultMultiline(), multiline: false, color: false, showIcons: false, showTitle: true };
   const payload: Payload = { ...titled("Fix login", 120), context_window: { used_percentage: 12 } };
   assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  project  Ctx 12%  █░░░░░░░░░  Fix login  Idle");
-  assert.equal(render({ ...payload, terminal_width: 45 }, { config }), "Sonnet 4.6 | Pro  Ctx 12%  █░░░░░░░░░  Idle");
+  assert.equal(render({ ...payload, terminal_width: 45 }, { config }), "Sonnet 4.6  Ctx 12%  █░░░░░░░░░  Idle");
 });
 
 // A `/usage` cache carries the payload's bucket shape. Each window takes the fresher of the two

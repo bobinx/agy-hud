@@ -336,36 +336,34 @@ function renderSingleLine(
     bar = progressBarWithColor(fillPct, ctxPct, 10, config.color, config.progressBarStyle);
   }
   const levels = [
-    // 0: Full HUD with title, cost, tokens, bars
+    // 0: Full HUD with title, cost, tokens, bars, and plan tier
     [modelWithPlan, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
     // 1: Drop Title
     [modelWithPlan, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, stateText, costText],
     // 2: Drop Tokens
     [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText, costText],
-    // 3: Drop Quota Bar (keep quota text)
-    [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText, costText],
+    // 3: Drop Plan Tier early (keep Cost, CWD, Git, Bar)
+    [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText, costText],
     // 4: Drop Cost
-    [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText],
-    // 5: Drop Step Count
-    [modelWithPlan, cwdText, gitText, ctx, bar, usageNoBar, stateText],
-    // 6: Drop CWD
-    [modelWithPlan, gitText, ctx, bar, usageNoBar, stateText],
-    // 7: Drop Bar (keep quota text) or Drop Quota text (keep bar)
-    [modelWithPlan, gitText, ctx, usageNoBar, stateText],
-    [modelWithPlan, ctx, bar, usageNoBar, stateText],
-    [modelWithPlan, ctx, bar, stateText],
-    [modelWithPlan, ctx, usageNoBar, stateText],
-    // 8: Drop Plan tier (Decoupled! Model name + mode preserved)
-    [modelWithoutPlan, gitText, ctx, bar, stateText],
+    [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText],
+    // 5: Drop Quota Bar (keep quota text)
+    [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText],
+    // 6: Drop Step Count
+    [modelWithoutPlan, cwdText, gitText, ctx, bar, usageNoBar, stateText],
+    // 7: Drop CWD
+    [modelWithoutPlan, gitText, ctx, bar, usageNoBar, stateText],
+    // 8: Drop Context Bar (or Quota text)
     [modelWithoutPlan, gitText, ctx, usageNoBar, stateText],
-    [modelWithoutPlan, gitText, ctx, stateText],
+    [modelWithoutPlan, ctx, bar, usageNoBar, stateText],
     [modelWithoutPlan, ctx, bar, stateText],
+    [modelWithoutPlan, ctx, usageNoBar, stateText],
+    // 9: Drop Git Branch
     [modelWithoutPlan, ctx, stateText],
-    // 9: Drop Mode (Model name only)
+    // 10: Drop Mode (Model name only)
     [modelOnly, ctx, stateText],
-    // 10: Drop Model badge
+    // 11: Drop Model badge
     [ctx, stateText],
-    // 11: Minimal percentage & state
+    // 12: Minimal percentage & state
     [`${formatInt(ctxValPct)}%`, stateLabel]
   ];
   for (const parts of levels) {
