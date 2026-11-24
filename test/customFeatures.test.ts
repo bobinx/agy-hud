@@ -157,3 +157,28 @@ test("context_value remaining displays remaining percentage and inverts progress
   const out = render(payload, { config });
   assert.match(out, /Context ━━━━━━━─── 65%/);
 });
+
+test("single-line decouples and drops plan tier before model name on narrow width", () => {
+  const config = {
+    ...defaultConfig(),
+    multiline: false,
+    color: false,
+    showIcons: false,
+    showProgressBar: false
+  };
+  const payload: Payload = {
+    model: { display_name: "Gemini 3.5 Flash" },
+    plan_tier: "Google AI Pro",
+    cwd: "/workspace/project",
+    agent_state: "idle",
+    context_window: { used_percentage: 10 },
+    terminal_width: 28
+  };
+
+  const out = render(payload, { config, gitBranch: "main" });
+  // At width 28, plan tier ("| Pro") is dropped while model name is preserved
+  assert.doesNotMatch(out, /Pro/);
+  assert.match(out, /3\.5 Flash/);
+  assert.match(out, /Ctx 10%/);
+});
+

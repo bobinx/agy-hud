@@ -933,7 +933,10 @@ function render(payload, opts) {
   const config = opts.config;
   const width = (payload.terminal_width ?? 0) <= 0 ? 80 : payload.terminal_width;
   const modelDisplay = payload.model?.display_name || payload.model?.id || "Gemini";
-  const modelSegment = renderModelSegment(shortModelName(modelDisplay), payload.plan_tier ?? "", config) + renderMode(payload.cycle_mode, config);
+  const shortModel = shortModelName(modelDisplay);
+  const planTier = parsePlanTier(payload.plan_tier ?? "");
+  const modeSuffix = renderMode(payload.cycle_mode, config);
+  const modelSegment = renderModelSegment(shortModel, payload.plan_tier ?? "", config) + modeSuffix;
   const ctxPct = contextPercent(payload.context_window);
   const stateLabel = state(payload.agent_state ?? "");
   const quota = quotaInfo(opts.quota, modelDisplay, payload.quota, opts.now ?? /* @__PURE__ */ new Date());
@@ -941,7 +944,20 @@ function render(payload, opts) {
   if (config.multiline) {
     return renderMultiline(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
   }
-  return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
+  return renderSingleLine(
+    payload,
+    config,
+    width,
+    modelSegment,
+    ctxPct,
+    quota,
+    opts.gitBranch ?? "",
+    stateLabel,
+    stepSegment,
+    shortModel,
+    planTier,
+    modeSuffix
+  );
 }
 function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, branch2, stateLabel, stepSegment = "") {
   const line1Parts = [colorize(modelSegment, colorCyan, config.color)];
@@ -1024,8 +1040,28 @@ function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, br
   return `${line1}
 ${line2}`;
 }
-function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, branch2 = "", stateLabel, stepSegment = "") {
-  const coloredBadge = colorize(modelSegment, colorCyan, config.color);
+function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, branch2 = "", stateLabel, stepSegment = "", shortModel, planTier, modeSuffix) {
+  const modelIcon = withIcon(config, "\uEE9C ", "");
+  const hasModel = config.showModel && (shortModel ?? "") !== "";
+  const renderedPlan = planTier ? renderPlan(planTier, config) : "";
+  let modelWithPlanStr = "";
+  let modelWithoutPlanStr = "";
+  if (hasModel && renderedPlan !== "") {
+    modelWithPlanStr = `${modelIcon}${shortModel} | ${renderedPlan}`;
+    modelWithoutPlanStr = `${modelIcon}${shortModel}`;
+  } else if (hasModel) {
+    modelWithPlanStr = `${modelIcon}${shortModel}`;
+    modelWithoutPlanStr = `${modelIcon}${shortModel}`;
+  } else if (renderedPlan !== "") {
+    modelWithPlanStr = planTier === "Pro" ? `${modelIcon}${renderedPlan} Tier` : `${modelIcon}${renderedPlan}`;
+    modelWithoutPlanStr = "";
+  } else {
+    modelWithPlanStr = modelSegment;
+    modelWithoutPlanStr = modelSegment;
+  }
+  const modelWithPlan = modelWithPlanStr !== "" ? colorize(modelWithPlanStr, colorCyan, config.color) + (modeSuffix ?? "") : "";
+  const modelWithoutPlan = modelWithoutPlanStr !== "" ? colorize(modelWithoutPlanStr, colorCyan, config.color) + (modeSuffix ?? "") : "";
+  const modelOnly = modelWithoutPlanStr !== "" ? colorize(modelWithoutPlanStr, colorCyan, config.color) : "";
   const cwdText = config.showCWD && payload.cwd ? colorize(withIcon(config, "\uF07C ", "") + import_node_path4.default.basename(payload.cwd), colorYellow, config.color) : "";
   const gitText = config.showGitBranch && branch2 !== "" ? colorize(renderGitSegment(branch2, config), colorMagenta, config.color) : "";
   const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";
@@ -1058,21 +1094,36 @@ function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, b
     bar = progressBarWithColor(fillPct, ctxPct, 10, config.color, config.progressBarStyle);
   }
   const levels = [
-    [coloredBadge, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, cwdText, gitText, stepText, ctx, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, gitText, stepText, ctx, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, cwdText, gitText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, cwdText, gitText, ctx, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, gitText, ctx, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, ctx, bar, usageWithBar, titleText, stateText, costText],
-    [coloredBadge, cwdText, gitText, ctx, tokens, bar, usageNoBar, titleText, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usageNoBar, titleText, stateText, costText],
-    [coloredBadge, ctx, tokens, bar, usageNoBar, titleText, stateText],
-    [coloredBadge, ctx, bar, usageNoBar, stateText],
-    [coloredBadge, ctx, usageNoBar, stateText],
-    [coloredBadge, ctx, stateText],
+    // 0: Full HUD with title, cost, tokens, bars
+    [modelWithPlan, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, titleText, stateText, costText],
+    // 1: Drop Title
+    [modelWithPlan, cwdText, gitText, stepText, ctx, tokens, bar, usageWithBar, stateText, costText],
+    // 2: Drop Tokens
+    [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText, costText],
+    // 3: Drop Quota Bar (keep quota text)
+    [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText, costText],
+    // 4: Drop Cost
+    [modelWithPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText],
+    // 5: Drop Step Count
+    [modelWithPlan, cwdText, gitText, ctx, bar, usageNoBar, stateText],
+    // 6: Drop CWD
+    [modelWithPlan, gitText, ctx, bar, usageNoBar, stateText],
+    // 7: Drop Bar (keep quota text) or Drop Quota text (keep bar)
+    [modelWithPlan, gitText, ctx, usageNoBar, stateText],
+    [modelWithPlan, ctx, bar, usageNoBar, stateText],
+    [modelWithPlan, ctx, bar, stateText],
+    [modelWithPlan, ctx, usageNoBar, stateText],
+    // 8: Drop Plan tier (Decoupled! Model name + mode preserved)
+    [modelWithoutPlan, gitText, ctx, bar, stateText],
+    [modelWithoutPlan, gitText, ctx, usageNoBar, stateText],
+    [modelWithoutPlan, gitText, ctx, stateText],
+    [modelWithoutPlan, ctx, bar, stateText],
+    [modelWithoutPlan, ctx, stateText],
+    // 9: Drop Mode (Model name only)
+    [modelOnly, ctx, stateText],
+    // 10: Drop Model badge
     [ctx, stateText],
+    // 11: Minimal percentage & state
     [`${formatInt(ctxValPct)}%`, stateLabel]
   ];
   for (const parts of levels) {
@@ -1083,10 +1134,13 @@ function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, b
   }
   return fit(`${formatInt(ctxValPct)}% ${stateLabel}`, width);
 }
-function renderModelSegment(shortModel, rawPlan, config) {
+function parsePlanTier(rawPlan) {
   const trimmed = rawPlan.trim();
   const knownTier = trimmed.match(/^(?:Google AI\s+)?(Pro|Ultra|Free)$/i);
-  const plan = knownTier ? title(knownTier[1]) : "Plan ?";
+  return knownTier ? title(knownTier[1]) : "Plan ?";
+}
+function renderModelSegment(shortModel, rawPlan, config) {
+  const plan = parsePlanTier(rawPlan);
   if (config.showModel && shortModel !== "") {
     return `${withIcon(config, "\uEE9C ", "")}${shortModel} | ${renderPlan(plan, config)}`;
   }
