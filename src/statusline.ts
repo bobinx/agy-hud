@@ -234,14 +234,21 @@ function renderMultiline(
     line2 = joinHeader(`Context ${contextValue(config, payload.context_window, ctxPct)}`, usageNoBar);
   }
   if (visibleLen(line2) > width) {
-    let usageCompact = "";
+    let usageFiveHour = "";
     if (quota.hasQuota) {
-      usageCompact = usageLabel(config, quota, false);
-      if (quota.windows.length <= 1 && quota.reset !== "") {
-        usageCompact += resetSuffix(config, quota.reset);
+      if (quota.windows.length > 1) {
+        const fiveHour = quota.windows.find(w => w.label === "5h") ?? quota.windows[0];
+        if (fiveHour) {
+          usageFiveHour = `Usage ${usageWindowLabel(config, fiveHour, false)}`;
+        }
+      } else {
+        usageFiveHour = usageLabel(config, quota, false);
+        if (quota.windows.length <= 1 && quota.reset !== "") {
+          usageFiveHour += resetSuffix(config, quota.reset);
+        }
       }
     }
-    line2 = joinHeader(`Context ${formatInt(ctxPct)}%`, usageCompact);
+    line2 = joinHeader(`Context ${formatInt(ctxPct)}%`, usageFiveHour);
   }
   if (visibleLen(line2) > width) {
     let coreUsage = "";
@@ -317,6 +324,7 @@ function renderSingleLine(
   }
   let usageWithBar = "";
   let usageNoBar = "";
+  let usageFiveHour = "";
   if (quota.hasQuota) {
     let textWithBar = usageLabel(config, quota, true);
     let textNoBar = usageLabel(config, quota, false);
@@ -326,6 +334,14 @@ function renderSingleLine(
     }
     usageWithBar = colorize(textWithBar, colorMuted, config.color);
     usageNoBar = colorize(textNoBar, colorMuted, config.color);
+    if (quota.windows.length > 1) {
+      const fiveHour = quota.windows.find(w => w.label === "5h") ?? quota.windows[0];
+      if (fiveHour) {
+        usageFiveHour = colorize(`Usage ${usageWindowLabel(config, fiveHour, false)}`, colorMuted, config.color);
+      }
+    } else {
+      usageFiveHour = usageNoBar;
+    }
   }
   const stateText = config.showAgentState ? colorize(stateLabel, stateColor(stateLabel), config.color) : "";
   const costText = renderCost(payload.cost, config);
@@ -346,24 +362,27 @@ function renderSingleLine(
     [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText, costText],
     // 4: Drop Cost
     [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageWithBar, stateText],
-    // 5: Drop Quota Bar (keep quota text)
+    // 5: Hide bar for both windows
     [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageNoBar, stateText],
-    // 6: Drop Step Count
-    [modelWithoutPlan, cwdText, gitText, ctx, bar, usageNoBar, stateText],
-    // 7: Drop CWD
-    [modelWithoutPlan, gitText, ctx, bar, usageNoBar, stateText],
-    // 8: Drop Context Bar (or Quota text)
-    [modelWithoutPlan, gitText, ctx, usageNoBar, stateText],
-    [modelWithoutPlan, ctx, bar, usageNoBar, stateText],
+    // 6: Hide weekly (keep 5h without bar)
+    [modelWithoutPlan, cwdText, gitText, stepText, ctx, bar, usageFiveHour, stateText],
+    // 7: Drop Step Count
+    [modelWithoutPlan, cwdText, gitText, ctx, bar, usageFiveHour, stateText],
+    // 8: Drop CWD
+    [modelWithoutPlan, gitText, ctx, bar, usageFiveHour, stateText],
+    // 9: Drop Git Branch or Bar
+    [modelWithoutPlan, gitText, ctx, usageFiveHour, stateText],
+    [modelWithoutPlan, ctx, bar, usageFiveHour, stateText],
+    [modelWithoutPlan, ctx, usageFiveHour, stateText],
+    // 10: Hide 5h (Usage completely dropped)
+    [modelWithoutPlan, gitText, ctx, stateText],
     [modelWithoutPlan, ctx, bar, stateText],
-    [modelWithoutPlan, ctx, usageNoBar, stateText],
-    // 9: Drop Git Branch
     [modelWithoutPlan, ctx, stateText],
-    // 10: Drop Mode (Model name only)
+    // 11: Drop Mode (Model name only)
     [modelOnly, ctx, stateText],
-    // 11: Drop Model badge
+    // 12: Drop Model badge
     [ctx, stateText],
-    // 12: Minimal percentage & state
+    // 13: Minimal percentage & state
     [`${formatInt(ctxValPct)}%`, stateLabel]
   ];
   for (const parts of levels) {
@@ -451,13 +470,13 @@ function quotaInfo(cache: Cache | null | undefined, modelDisplay: string, offici
     // nothing about Argon, so then the cache is all there is.
     const merged = mergeQuotaBuckets(officialQuota ?? {}, cachedBuckets, now);
     const plan = officialQuota && geminiPlanKeys.some(key => Object.prototype.hasOwnProperty.call(officialQuota, key)) ? officialQuota : merged;
-    const mergedInfo = officialQuotaInfo(merged, modelDisplay, plan);
+    const mergedInfo = officialQuotaInfo(merged, modelDisplay, plan, now);
     if (mergedInfo !== null) {
       return mergedInfo;
     }
   }
   const cacheInfo = cacheQuotaInfo(cache, modelDisplay);
-  const official = officialQuotaInfo(officialQuota, modelDisplay);
+  const official = officialQuotaInfo(officialQuota, modelDisplay, officialQuota, now);
   if (official !== null) {
     if (official.hasQuota && cacheInfo !== null && cacheInfo.hasQuota && cacheIsFresh(cache, now)) {
       return mergeFreshCacheQuota(official, cacheInfo);
@@ -545,7 +564,8 @@ function cacheIsFresh(cache: Cache | null | undefined, now: Date): boolean {
 function officialQuotaInfo(
   officialQuota: Record<string, OfficialQuotaBucket> | undefined,
   modelDisplay: string,
-  plan: Record<string, OfficialQuotaBucket> | undefined = officialQuota
+  plan: Record<string, OfficialQuotaBucket> | undefined = officialQuota,
+  now?: Date
 ): QuotaDisplay | null {
   if (!officialQuota) {
     return null;
@@ -564,7 +584,7 @@ function officialQuotaInfo(
         remainingFraction: bucket.remaining_fraction ?? 1,
         resetTime: bucket.reset_time ?? ""
       });
-      const reset = usagePct > 0 ? formatOfficialReset(bucket) : "";
+      const reset = formatOfficialReset(bucket, now);
       buckets.push({ label, usagePct, reset });
     }
   }
@@ -643,9 +663,18 @@ function formatResetClock(reset: string): string {
   return `${pad2(target.getHours())}:${pad2(target.getMinutes())}`;
 }
 
-function formatOfficialReset(bucket: OfficialQuotaBucket): string {
+function formatOfficialReset(bucket: OfficialQuotaBucket, now?: Date): string {
   if (Number.isFinite(bucket.reset_in_seconds) && (bucket.reset_in_seconds ?? 0) > 0) {
     return formatResetDuration(bucket.reset_in_seconds ?? 0);
+  }
+  if (bucket.reset_time && now) {
+    const target = Date.parse(bucket.reset_time);
+    if (Number.isFinite(target)) {
+      const seconds = Math.trunc((target - now.getTime()) / 1000);
+      if (seconds > 0) {
+        return formatResetDuration(seconds);
+      }
+    }
   }
   return formatResetClock(bucket.reset_time ?? "");
 }

@@ -216,7 +216,7 @@ test("official quota uses third-party buckets for Claude and GPT models", () => 
   }));
 
   assert.match(out, /Sonnet 4\.6/);
-  assert.match(out, /Usage ████░░░░ 48% left ↻ Reset \d\d:\d\d/);
+  assert.match(out, /Usage ████░░░░ 48% left ↻ Reset 5h 0m/);
 });
 
 test("agent state can be hidden", () => {
@@ -847,7 +847,7 @@ test("renders a real Antigravity CLI 1.3.5 payload", () => {
   assert.match(line1, /Idle/);
   assert.match(line2, /^Context .* 0%/);
   // usage_value defaults to "remaining".
-  assert.match(line2, /Usage .* 100% \|.* 98% \(↻ 5d 21h\)/);
+  assert.match(line2, /Usage .* 100% \(↻ 4h 59m\) \|.* 98% \(↻ 5d 21h\)/);
   for (const line of out.split("\n")) {
     assert.ok(visibleLen(line) <= 140);
   }

@@ -184,3 +184,87 @@ test("single-line decouples and drops plan tier before model name on narrow widt
   assert.match(out, /Ctx 10%/);
 });
 
+test("0% usage window with reset info renders the reset time", () => {
+  const config = {
+    ...defaultConfig(),
+    multiline: true,
+    color: false,
+    showIcons: true
+  };
+  const payload: Payload = {
+    model: { display_name: "Gemini 3.5 Flash" },
+    plan_tier: "Google AI Pro",
+    terminal_width: 160,
+    quota: {
+      "gemini-5h": {
+        remaining_fraction: 1.0,
+        reset_in_seconds: 18000,
+        reset_time: "2026-11-24T22:00:00Z"
+      },
+      "gemini-weekly": {
+        remaining_fraction: 1.0,
+        reset_time: "2026-11-27T17:00:00Z"
+      }
+    }
+  };
+
+  const out = render(payload, {
+    config,
+    now: new Date("2026-11-24T17:00:00Z")
+  });
+  // Both windows have 0% usage (100% remaining) and both render reset duration
+  assert.match(out, /100% \(↻ 5h 0m\)/);
+  assert.match(out, /100% \(↻ 3d 0h\)/);
+});
+
+test("exact degradation priority: full usage with bar -> usage without bar for both -> 5h only without bar -> no usage", () => {
+  const baseConfig = {
+    ...defaultConfig(),
+    multiline: false,
+    color: false,
+    showIcons: true,
+    progressBarStyle: "block",
+    showStepCount: false,
+    showCWD: false,
+    showGitBranch: false,
+    showCost: false,
+    showTitle: false
+  };
+  const payload: Payload = {
+    model: { display_name: "Flash" },
+    context_window: { used_percentage: 10 },
+    agent_state: "idle",
+    quota: {
+      "gemini-5h": {
+        remaining_fraction: 0.8,
+        reset_in_seconds: 14400
+      },
+      "gemini-weekly": {
+        remaining_fraction: 0.9,
+        reset_in_seconds: 259200
+      }
+    }
+  };
+
+  // 1. Full HUD: both windows with progress bars
+  const full = render({ ...payload, terminal_width: 120 }, { config: baseConfig });
+  assert.match(full, /Usage .*█.* 80% \(↻ 4h 0m\) \| .*█.* 90% \(↻ 3d 0h\)/);
+
+  // 2. Hide bar for both: both windows without progress bars
+  const noBar = render({ ...payload, terminal_width: 80 }, { config: baseConfig });
+  assert.match(noBar, /Usage 80% \(↻ 4h 0m\) \|  90% \(↻ 3d 0h\)/);
+  assert.doesNotMatch(noBar, /Usage [^U]*█/);
+
+  // 3. Hide weekly: only 5h window without progress bar
+  const fiveHourOnly = render({ ...payload, terminal_width: 60 }, { config: baseConfig });
+  assert.match(fiveHourOnly, /Usage 80% \(↻ 4h 0m\)/);
+  assert.doesNotMatch(fiveHourOnly, /90%/);
+
+  // 4. Hide 5h: usage segment completely dropped
+  const noUsage = render({ ...payload, terminal_width: 30 }, { config: baseConfig });
+  assert.doesNotMatch(noUsage, /Usage/);
+  assert.doesNotMatch(noUsage, /80%/);
+  assert.match(noUsage, /Flash/);
+  assert.match(noUsage, /Ctx 10%/);
+});
+
