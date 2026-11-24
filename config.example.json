@@ -1,7 +1,7 @@
 {
   "show_model": true,
   "show_progress_bar": true,
-  "multiline": true,
+  "multiline": false,
   "color": true,
   "debug": false,
   "show_git_branch": true,

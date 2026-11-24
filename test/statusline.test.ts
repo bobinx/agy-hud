@@ -4,6 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { strip, visibleLen } from "../src/ansi";
 import { defaultConfig, Config } from "../src/config";
+const defaultMultiline = (): Config => ({ ...defaultConfig(), multiline: true, progressBarStyle: "block" });
 import { Cache } from "../src/quota";
 import { Payload, render, shortModelName, formatCost } from "../src/statusline";
 
@@ -38,7 +39,7 @@ test("short model name strips Gemini and compacts tier", () => {
 });
 
 test("combined model plan badge and no duplicate model", () => {
-  const out = strip(renderFixture(defaultConfig()));
+  const out = strip(renderFixture(defaultMultiline()));
   assert.match(out, / 3\.5 Flash Med \|  Pro/);
   assert.equal((out.match(/3\.5 Flash Med/g) ?? []).length, 1);
 });
@@ -52,7 +53,7 @@ test("multiline default shape uses context and quota", () => {
       }
     }
   };
-  const out = strip(renderFixture(defaultConfig(), cache));
+  const out = strip(renderFixture(defaultMultiline(), cache));
   const lines = out.split("\n");
   assert.equal(lines.length, 2);
   assert.match(lines[0], / 3\.5 Flash Med \|  Pro/);
@@ -80,7 +81,7 @@ test("remaining quota renders as a context-style bar from precise fraction", () 
       }
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
 
   const out = strip(renderFixture(config, cache));
@@ -113,7 +114,7 @@ test("official quota payload renders five-hour and weekly windows over stale quo
       }
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
 
   const out = strip(render(payload, {
@@ -145,7 +146,7 @@ test("untouched official third-party quota does not override consumed active-mod
       }
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   config.contextValue = "both";
 
@@ -178,7 +179,7 @@ test("fresh active-model cache can override stale official third-party quota wit
       }
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
 
   const out = strip(render(payload, {
@@ -205,7 +206,7 @@ test("official quota uses third-party buckets for Claude and GPT models", () => 
       reset_time: "2026-06-15T08:21:23Z"
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
 
   const out = strip(render(payload, {
@@ -219,7 +220,7 @@ test("official quota uses third-party buckets for Claude and GPT models", () => 
 });
 
 test("agent state can be hidden", () => {
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.showAgentState = false;
   assert.doesNotMatch(strip(renderFixture(config)), /Idle/);
 });
@@ -234,7 +235,7 @@ test("current Gemini, Claude and GPT labels select the matching dual quota windo
       "gemini-5h": { remaining_fraction: 0.42 }, "gemini-weekly": { remaining_fraction: 0.81 },
       "3p-5h": { remaining_fraction: 0.13 }, "3p-weekly": { remaining_fraction: 0.67 }
     } };
-    const usage = render(payload, { config: { ...defaultConfig(), color: false } }).split("\n")[1];
+    const usage = render(payload, { config: { ...defaultMultiline(), color: false } }).split("\n")[1];
     assert.match(usage, new RegExp(wantFiveHour));
     assert.match(usage, new RegExp(wantWeekly));
   }
@@ -245,7 +246,7 @@ test("current Gemini, Claude and GPT labels select the matching dual quota windo
 // applies: here they read 100% and 39% left while Argon itself has nothing left.
 test("Gemini 4 Argon reads its own weekly bucket from a real 1.4.5 payload", () => {
   const payload = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "testdata", "statusline_payload_1.4.5.json"), "utf8"));
-  const out = strip(render(payload, { config: defaultConfig(), quota: null, gitBranch: "main", now: new Date("2026-10-22T13:06:20Z") }));
+  const out = strip(render(payload, { config: defaultMultiline(), quota: null, gitBranch: "main", now: new Date("2026-10-22T13:06:20Z") }));
   const [line1, line2] = out.split("\n");
   assert.match(line1, /4 Argon Med/);
   assert.match(line2, /Usage \S+ 0% left ↻ Reset 1d 13h/);
@@ -257,7 +258,7 @@ test("Gemini 4 Argon falls back to the Gemini buckets when it has no bucket of i
   const payload = { ...fixturePayload(), terminal_width: 180, model: { display_name: "Gemini 4 Argon (Medium)" }, quota: {
     "gemini-5h": { remaining_fraction: 0.42 }, "gemini-weekly": { remaining_fraction: 0.81 }
   } };
-  const usage = render(payload, { config: { ...defaultConfig(), color: false } }).split("\n")[1];
+  const usage = render(payload, { config: { ...defaultMultiline(), color: false } }).split("\n")[1];
   assert.match(usage, /42%.*81%/);
 });
 
@@ -265,7 +266,7 @@ test("Gemini 4 Argon reads its weekly bucket from a usage cache when the payload
   const payload = fixturePayload();
   payload.model = { display_name: "Gemini 4 Argon (Medium)" };
   payload.quota = undefined;
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   const cache: Cache = { timestamp: "2026-06-15T03:51:00Z", source: "usage", models: {},
     quota: { "gemini-argon-wtu-weekly": { remaining_fraction: 0.25, reset_time: weeklyReset } } };
@@ -284,7 +285,7 @@ test("an Argon bucket only in the usage cache does not override a payload withou
     "gemini-5h": { remaining_fraction: 0.7, reset_time: fiveHourReset, reset_in_seconds: 16151 },
     "gemini-weekly": { remaining_fraction: 0.8, reset_time: weeklyReset, reset_in_seconds: 336547 }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   const cache: Cache = { timestamp: "2026-06-15T03:51:00Z", source: "usage", models: {},
     quota: { "gemini-argon-wtu-weekly": { remaining_fraction: 0, reset_time: weeklyReset } } };
@@ -299,7 +300,7 @@ test("a payload with only third-party quota leaves the Argon decision to the usa
   const payload = fixturePayload();
   payload.model = { display_name: "Gemini 4 Argon (Medium)" };
   payload.quota = { "3p-5h": { remaining_fraction: 0.9, reset_time: fiveHourReset } };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   const cache: Cache = { timestamp: "2026-06-15T03:51:00Z", source: "usage", models: {},
     quota: { "gemini-argon-wtu-weekly": { remaining_fraction: 0.25, reset_time: weeklyReset } } };
@@ -312,7 +313,7 @@ test("Gemini models other than Argon ignore the Argon bucket", () => {
     "gemini-5h": { remaining_fraction: 0.42 }, "gemini-weekly": { remaining_fraction: 0.81 },
     "gemini-argon-wtu-weekly": { remaining_fraction: 0 }
   } };
-  const usage = render(payload, { config: { ...defaultConfig(), color: false } }).split("\n")[1];
+  const usage = render(payload, { config: { ...defaultMultiline(), color: false } }).split("\n")[1];
   assert.match(usage, /42%.*81%/);
 });
 
@@ -323,7 +324,7 @@ test("context value formats", () => {
     both: "Context █░░░░░░░░░ 12% (125k/1M)"
   };
   for (const [value, want] of Object.entries(cases)) {
-    const config = defaultConfig();
+    const config = defaultMultiline();
     config.color = false;
     config.contextValue = value;
     assert.match(renderFixture(config), new RegExp(want.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -338,7 +339,7 @@ test("context percent ignores volatile output token count", () => {
     context_window_size: 1_000_000,
     used_percentage: 10
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   config.contextValue = "both";
 
@@ -363,7 +364,7 @@ test("usage value can show percent used", () => {
       }
     }
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   config.usageValue = "percent";
   assert.match(renderFixture(config, cache), /Usage ██████░░ 80% ↻ Reset \d\d:\d\d/);
@@ -371,9 +372,9 @@ test("usage value can show percent used", () => {
 });
 
 test("header uses theme palette ANSI colors", () => {
-  const out = renderFixture(defaultConfig());
+  const out = renderFixture(defaultMultiline());
   const lines = out.split("\n");
-  assert.match(lines[0], /\x1b\[34m 3\.5 Flash Med \|  Pro\x1b\[0m/);
+  assert.match(lines[0], /\x1b\[36m 3\.5 Flash Med \|  Pro\x1b\[0m/);
   assert.match(lines[0], /\x1b\[33m agy-hud\x1b\[0m/);
   assert.match(lines[0], /\x1b\[35m main\x1b\[0m/);
 });
@@ -387,13 +388,13 @@ test("remaining usage bar color reflects used percentage", () => {
       }
     }
   };
-  const out = renderFixture(defaultConfig(), cache);
+  const out = renderFixture(defaultMultiline(), cache);
   assert.match(out, /Usage \x1b\[33m███░░░░░\x1b\[0m/);
   assert.match(strip(out), /40% left/);
 });
 
 test("quota miss omits usage without fake limit", () => {
-  const out = strip(renderFixture(defaultConfig()));
+  const out = strip(renderFixture(defaultMultiline()));
   assert.doesNotMatch(out, /Limit --/);
   assert.doesNotMatch(out, /Usage/);
   assert.doesNotMatch(out, /weekly/);
@@ -408,7 +409,7 @@ test("full remaining quota hides inactive reset countdown", () => {
       }
     }
   };
-  const out = strip(renderFixture(defaultConfig(), cache));
+  const out = strip(renderFixture(defaultMultiline(), cache));
   assert.match(out, /Usage/);
   assert.match(out, /100% left/);
   assert.doesNotMatch(out, /↻/);
@@ -432,7 +433,7 @@ test("payload model wins over stale cache active model", () => {
   };
 
   const out = strip(render(payload, {
-    config: defaultConfig(),
+    config: defaultMultiline(),
     quota: { ...cache, active_model: "Gemini 3.5 Flash (High)" } as Cache,
     gitBranch: "main",
     now: new Date("2026-05-19T12:00:00Z")
@@ -444,7 +445,7 @@ test("payload model wins over stale cache active model", () => {
 });
 
 test("single-line can show token detail only when it fits", () => {
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.multiline = false;
   config.showProgressBar = false;
   const out = strip(renderFixture(config));
@@ -463,13 +464,13 @@ test("single-line can show token detail only when it fits", () => {
 });
 
 test("color can be disabled", () => {
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   assert.doesNotMatch(renderFixture(config), /\x1b\[/);
 });
 
 test("icons can be disabled", () => {
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.showIcons = false;
   const out = strip(renderFixture(config));
   for (const icon of ["", "", "", "", "↻"]) {
@@ -487,7 +488,7 @@ test("sensitive payload fields never leak", () => {
   payload.conversation_id = "private-conversation-value";
   payload.transcript_path = "private-transcript-location";
   const out = render(payload, {
-    config: defaultConfig(),
+    config: defaultMultiline(),
     quota: { email: "private-cache-email-value", models: {} },
     now: new Date("2026-05-19T12:00:00Z")
   });
@@ -502,7 +503,7 @@ test("width degradation keeps every line within terminal width", () => {
     const payload = fixturePayload();
     payload.terminal_width = width;
     const out = render(payload, {
-      config: defaultConfig(),
+      config: defaultMultiline(),
       gitBranch: "main",
       now: new Date("2026-05-19T12:00:00Z")
     });
@@ -530,7 +531,7 @@ test("renders cost at the end of line 1 when available", () => {
     total_usd: 0.0345
   };
   const out = strip(render(payload, {
-    config: defaultConfig(),
+    config: defaultMultiline(),
     gitBranch: "main",
     now: new Date("2026-05-19T12:00:00Z")
   }));
@@ -538,7 +539,7 @@ test("renders cost at the end of line 1 when available", () => {
   assert.match(line1, /Idle │ \$0\.03$/);
 
   // Can be disabled via showCost
-  const noCostConfig = defaultConfig();
+  const noCostConfig = defaultMultiline();
   noCostConfig.showCost = false;
   const noCostOut = strip(render(payload, {
     config: noCostConfig,
@@ -553,7 +554,7 @@ test("single-line renders cost at the end when it fits", () => {
   payload.cost = {
     total_usd: 0.12
   };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.multiline = false;
   const out = strip(render(payload, {
     config,
@@ -569,7 +570,7 @@ test("multiline drops cost before directory or branch at boundary widths", () =>
     model: { display_name: "Claude Sonnet 4.6" }, cwd: "/workspace/project",
     plan_tier: "Google AI Pro", agent_state: "idle", cost: { total_usd: 0 }
   };
-  const config = { ...defaultConfig(), color: false, showIcons: false };
+  const config = { ...defaultMultiline(), color: false, showIcons: false };
   const cases = [
     [40, "Sonnet 4.6 | Pro │ project │ main │ Idle"],
     [32, "Sonnet 4.6 | Pro │ main │ Idle"]
@@ -585,13 +586,13 @@ test("single-line drops cost before quota at boundary width", () => {
     terminal_width: 50, agent_state: "idle", context_window: { used_percentage: 12 },
     quota: { "3p-5h": { remaining_fraction: 0.01 } }, cost: { total_usd: 0 }
   };
-  const config = { ...defaultConfig(), multiline: false, color: false, showIcons: false };
+  const config = { ...defaultMultiline(), multiline: false, color: false, showIcons: false };
   assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  Ctx 12%  Usage 1% left  Idle");
 });
 
 test("cost estimates are marked in both layouts using the provided total", () => {
   for (const multiline of [true, false]) {
-    const config = { ...defaultConfig(), multiline, color: false };
+    const config = { ...defaultMultiline(), multiline, color: false };
     const payload = { ...fixturePayload(), terminal_width: 180, cost: { total_usd: 1.25, subagent_usd: 0.25, estimated: true } };
     assert.match(render(payload, { config }).split("\n")[0], /~\$1\.25$/);
     payload.cost.estimated = false;
@@ -603,7 +604,7 @@ test("invalid cost is omitted rather than reported as zero spend", () => {
   for (const multiline of [true, false]) {
     for (const total_usd of [NaN, Infinity, -1]) {
       const out = render({ ...fixturePayload(), cost: { total_usd }, terminal_width: 180 }, {
-        config: { ...defaultConfig(), multiline, color: false }
+        config: { ...defaultMultiline(), multiline, color: false }
       });
       assert.doesNotMatch(out, /\$/);
     }
@@ -619,7 +620,7 @@ test("plan badges normalize known tiers and do not call unknown paid plans Free"
   ];
   for (const [plan_tier, want] of cases) {
     const out = render({ model: { display_name: "Claude Sonnet 4.6" }, plan_tier, terminal_width: 100 }, {
-      config: { ...defaultConfig(), color: false, showIcons: false }
+      config: { ...defaultMultiline(), color: false, showIcons: false }
     });
     assert.equal(out.split("\n")[0], `Sonnet 4.6 | ${want} │ Idle`);
   }
@@ -628,7 +629,7 @@ test("plan badges normalize known tiers and do not call unknown paid plans Free"
 test("narrow CJK model headers are clipped to columns without splitting graphemes", () => {
   for (const [display_name, width, want] of [["中文模型", 3, "中"], ["👩‍💻abc", 2, "👩‍💻"], ["e\u0301abc", 1, "e\u0301"]] as const) {
     const out = render({ model: { display_name }, terminal_width: width }, {
-      config: { ...defaultConfig(), color: false, showIcons: false, showAgentState: false }
+      config: { ...defaultMultiline(), color: false, showIcons: false, showAgentState: false }
     });
     assert.equal(out.split("\n")[0], want);
   }
@@ -637,7 +638,7 @@ test("narrow CJK model headers are clipped to columns without splitting grapheme
 test("recent emoji headers neither overflow nor disappear at two columns", () => {
   for (const model of ["🫨", "🧑🏽‍💻"]) {
     const out = render({ model: { display_name: `${model}abc` }, terminal_width: 2 }, {
-      config: { ...defaultConfig(), color: false, showIcons: false, showAgentState: false }
+      config: { ...defaultMultiline(), color: false, showIcons: false, showAgentState: false }
     });
     assert.equal(out.split("\n")[0], model);
   }
@@ -648,7 +649,7 @@ test("cost and wide workspace labels obey both layout width limits", () => {
     for (const width of [10, 20, 30, 40, 60, 80]) {
       for (const total_usd of [0, 0.0001, 0.01, 1.25]) {
         const payload = { ...fixturePayload(), cwd: "/workspace/中文目录👩‍💻", terminal_width: width, cost: { total_usd, estimated: true } };
-        const out = render(payload, { config: { ...defaultConfig(), multiline }, gitBranch: "main" });
+        const out = render(payload, { config: { ...defaultMultiline(), multiline }, gitBranch: "main" });
         for (const line of out.split("\n")) assert.ok(visibleLen(line) <= width);
       }
     }
@@ -665,19 +666,19 @@ function titled(title: unknown, width = 120): Payload {
 }
 
 test("conversation title stays hidden unless show_title is enabled", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false };
-  assert.equal(defaultConfig().showTitle, false);
+  const config = { ...defaultMultiline(), color: false, showIcons: false };
+  assert.equal(defaultMultiline().showTitle, false);
   assert.doesNotMatch(render(titled("Fix login"), { config, gitBranch: "main" }), /Fix login/);
 });
 
 test("multiline shows the conversation title between branch and state", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const line1 = render(titled("Fix login"), { config, gitBranch: "main" }).split("\n")[0];
   assert.equal(line1, "Sonnet 4.6 | Pro │ project │ main │ Fix login │ Idle");
 });
 
 test("conversation title cannot inject control sequences or break the layout", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const out = render(titled("Fix\nlogin\x1b]0;pwned\x07 \u202Eflow\t"), { config, gitBranch: "main" });
   assert.equal(out.split("\n").length, 2, "a newline in the title must not add a HUD line");
   assert.doesNotMatch(out.split("\n")[0], /[\x00-\x1f\x7f\u202e]/);
@@ -685,7 +686,7 @@ test("conversation title cannot inject control sequences or break the layout", (
 });
 
 test("long conversation titles are clipped to a bounded width", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const line1 = render(titled("Refactor the quota probe discovery and hint cache"), { config, gitBranch: "main" }).split("\n")[0];
   const segment = line1.split(" │ ")[3];
   assert.ok(segment.endsWith("…"), segment);
@@ -693,20 +694,20 @@ test("long conversation titles are clipped to a bounded width", () => {
 });
 
 test("empty or non-string conversation titles are omitted", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   for (const title of ["", "   ", 42, null]) {
     assert.equal(render(titled(title), { config, gitBranch: "main" }).split("\n")[0], "Sonnet 4.6 | Pro │ project │ main │ Idle");
   }
 });
 
 test("multiline drops the conversation title before cost", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const payload = { ...titled("Fix login", 50), cost: { total_usd: 0 } };
   assert.equal(render(payload, { config, gitBranch: "main" }).split("\n")[0], "Sonnet 4.6 | Pro │ project │ main │ Idle │ $0.00");
 });
 
 test("single-line shows the conversation title before state and drops it first", () => {
-  const config = { ...defaultConfig(), multiline: false, color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), multiline: false, color: false, showIcons: false, showTitle: true };
   const payload: Payload = { ...titled("Fix login", 120), context_window: { used_percentage: 12 } };
   assert.equal(render(payload, { config }), "Sonnet 4.6 | Pro  project  Ctx 12%  █░░░░░░░░░  Fix login  Idle");
   assert.equal(render({ ...payload, terminal_width: 45 }, { config }), "Sonnet 4.6 | Pro  Ctx 12%  █░░░░░░░░░  Idle");
@@ -718,7 +719,7 @@ function bucketRender(payloadQuota: Payload["quota"], cacheQuota: Cache["quota"]
   const payload = fixturePayload();
   payload.terminal_width = 160;
   payload.quota = payloadQuota;
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   const cache: Cache = { timestamp: "2026-06-15T03:51:00Z", source: "usage", models: {}, quota: cacheQuota };
   return strip(render(payload, { config, quota: cache, gitBranch: "main", now: new Date(now) })).split("\n")[1];
@@ -795,7 +796,7 @@ test("third-party models read the third-party buckets of a usage cache", () => {
   const payload = fixturePayload();
   payload.model = { display_name: "Claude Sonnet 4.6 (Thinking)" };
   payload.quota = { "3p-5h": { remaining_fraction: 0.9, reset_time: fiveHourReset } };
-  const config = defaultConfig();
+  const config = defaultMultiline();
   config.color = false;
   const cache: Cache = { timestamp: "2026-06-15T03:51:00Z", source: "usage", models: {},
     quota: { "3p-5h": { remaining_fraction: 0.5, reset_time: fiveHourReset }, "gemini-5h": { remaining_fraction: 0.2, reset_time: fiveHourReset } } };
@@ -804,7 +805,7 @@ test("third-party models read the third-party buckets of a usage cache", () => {
 });
 
 test("a title made only of invisible format characters is omitted", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const payload: Payload = {
     model: { display_name: "Claude Sonnet 4.6" }, cwd: "/workspace/project",
     plan_tier: "Google AI Pro", agent_state: "idle", terminal_width: 120,
@@ -814,7 +815,7 @@ test("a title made only of invisible format characters is omitted", () => {
 });
 
 test("titles keep joiners and tag characters that form visible glyphs", () => {
-  const config = { ...defaultConfig(), color: false, showIcons: false, showTitle: true };
+  const config = { ...defaultMultiline(), color: false, showIcons: false, showTitle: true };
   const payload: Payload = {
     model: { display_name: "Claude Sonnet 4.6" }, cwd: "/workspace/project",
     plan_tier: "Google AI Pro", agent_state: "idle", terminal_width: 120,
@@ -839,7 +840,7 @@ test("on equal remainders the cached reading wins, so the countdown is live", ()
 // shows; the rest must not disturb the HUD.
 test("renders a real Antigravity CLI 1.3.5 payload", () => {
   const payload = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "..", "testdata", "statusline_payload_1.3.5.json"), "utf8"));
-  const out = strip(render(payload, { config: defaultConfig(), quota: null, gitBranch: "main", now: new Date("2026-10-15T08:38:00Z") }));
+  const out = strip(render(payload, { config: defaultMultiline(), quota: null, gitBranch: "main", now: new Date("2026-10-15T08:38:00Z") }));
   const [line1, line2] = out.split("\n");
   assert.match(line1, /3\.8 Flash High/);
   assert.match(line1, /Pro \| Auto/);
@@ -858,7 +859,7 @@ function renderMode(mode: unknown, overrides: Partial<Config> = {}, extra: Recor
   const payload = { ...fixturePayload(), ...extra } as Payload & Record<string, unknown>;
   if (mode !== undefined) payload.cycle_mode = mode;
   return render(payload, {
-    config: { ...defaultConfig(), showIcons: false, ...overrides },
+    config: { ...defaultMultiline(), showIcons: false, ...overrides },
     quota: null,
     gitBranch: "main",
     now: new Date("2026-05-19T12:00:00Z")

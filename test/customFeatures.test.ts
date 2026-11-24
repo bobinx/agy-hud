@@ -142,6 +142,7 @@ test("single-line mode includes cwd, git branch, and quota bar", () => {
 test("context_value remaining displays remaining percentage and inverts progress bar", () => {
   const config = {
     ...defaultConfig(),
+    multiline: true,
     color: false,
     showIcons: false,
     contextValue: "remaining",

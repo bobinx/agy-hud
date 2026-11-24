@@ -9,7 +9,7 @@ test("default config matches open-source defaults", () => {
   const got = defaultConfig();
   assert.equal(got.showModel, true);
   assert.equal(got.showProgressBar, true);
-  assert.equal(got.multiline, true);
+  assert.equal(got.multiline, false);
   assert.equal(got.color, true);
   assert.equal(got.showGitBranch, true);
   assert.equal(got.showCWD, true);
@@ -19,6 +19,8 @@ test("default config matches open-source defaults", () => {
   assert.equal(got.debug, false);
   assert.equal(got.contextValue, "percent");
   assert.equal(got.usageValue, "remaining");
+  assert.equal(got.progressBarStyle, "line");
+  assert.equal(got.showStepCount, true);
 });
 
 test("load merges partial overrides", () => {

@@ -158,7 +158,7 @@ function renderMultiline(
   stateLabel: string,
   stepSegment: string = ""
 ): string {
-  const line1Parts = [colorize(modelSegment, colorBlue, config.color)];
+  const line1Parts = [colorize(modelSegment, colorCyan, config.color)];
   if (config.showCWD && payload.cwd) {
     line1Parts.push(colorize(withIcon(config, " ", "") + path.basename(payload.cwd), colorYellow, config.color));
   }
@@ -182,13 +182,13 @@ function renderMultiline(
   }
   if (visibleLen(line1) > width) {
     const git = config.showGitBranch && branch !== "" ? colorize(renderGitSegment(branch, config), colorMagenta, config.color) : "";
-    line1 = joinHeader(colorize(modelSegment, colorBlue, config.color), git, stateText);
+    line1 = joinHeader(colorize(modelSegment, colorCyan, config.color), git, stateText);
   }
   if (visibleLen(line1) > width) {
-    line1 = joinHeader(colorize(modelSegment, colorBlue, config.color), stateText);
+    line1 = joinHeader(colorize(modelSegment, colorCyan, config.color), stateText);
   }
   if (visibleLen(line1) > width) {
-    line1 = colorize(modelSegment, colorBlue, config.color);
+    line1 = colorize(modelSegment, colorCyan, config.color);
   }
   line1 = fit(line1, width);
 
@@ -252,7 +252,7 @@ function renderSingleLine(
   stateLabel: string,
   stepSegment: string = ""
 ): string {
-  const coloredBadge = colorize(modelSegment, colorBlue, config.color);
+  const coloredBadge = colorize(modelSegment, colorCyan, config.color);
   const cwdText = config.showCWD && payload.cwd ? colorize(withIcon(config, " ", "") + path.basename(payload.cwd), colorYellow, config.color) : "";
   const gitText = config.showGitBranch && branch !== "" ? colorize(renderGitSegment(branch, config), colorMagenta, config.color) : "";
   const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";

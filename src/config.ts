@@ -23,7 +23,7 @@ export function defaultConfig(): Config {
   return {
     showModel: true,
     showProgressBar: true,
-    multiline: true,
+    multiline: false,
     color: true,
     showGitBranch: true,
     showCWD: true,
@@ -32,7 +32,7 @@ export function defaultConfig(): Config {
     showTitle: false,
     showMode: true,
     showIcons: true,
-    progressBarStyle: "block",
+    progressBarStyle: "line",
     showStepCount: true,
     contextValue: "percent",
     usageValue: "remaining",

@@ -174,7 +174,7 @@ function defaultConfig() {
   return {
     showModel: true,
     showProgressBar: true,
-    multiline: true,
+    multiline: false,
     color: true,
     showGitBranch: true,
     showCWD: true,
@@ -183,7 +183,7 @@ function defaultConfig() {
     showTitle: false,
     showMode: true,
     showIcons: true,
-    progressBarStyle: "block",
+    progressBarStyle: "line",
     showStepCount: true,
     contextValue: "percent",
     usageValue: "remaining",
@@ -885,7 +885,6 @@ function renderStepSegment(state2, payload, config) {
 // src/statusline.ts
 var import_node_path4 = __toESM(require("node:path"));
 var colorReset = "\x1B[0m";
-var colorBlue = "\x1B[34m";
 var colorGreen = "\x1B[32m";
 var colorYellow = "\x1B[33m";
 var colorCyan = "\x1B[36m";
@@ -945,7 +944,7 @@ function render(payload, opts) {
   return renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, opts.gitBranch ?? "", stateLabel, stepSegment);
 }
 function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, branch2, stateLabel, stepSegment = "") {
-  const line1Parts = [colorize(modelSegment, colorBlue, config.color)];
+  const line1Parts = [colorize(modelSegment, colorCyan, config.color)];
   if (config.showCWD && payload.cwd) {
     line1Parts.push(colorize(withIcon(config, "\uF07C ", "") + import_node_path4.default.basename(payload.cwd), colorYellow, config.color));
   }
@@ -968,13 +967,13 @@ function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, br
   }
   if (visibleLen(line1) > width) {
     const git = config.showGitBranch && branch2 !== "" ? colorize(renderGitSegment(branch2, config), colorMagenta, config.color) : "";
-    line1 = joinHeader(colorize(modelSegment, colorBlue, config.color), git, stateText);
+    line1 = joinHeader(colorize(modelSegment, colorCyan, config.color), git, stateText);
   }
   if (visibleLen(line1) > width) {
-    line1 = joinHeader(colorize(modelSegment, colorBlue, config.color), stateText);
+    line1 = joinHeader(colorize(modelSegment, colorCyan, config.color), stateText);
   }
   if (visibleLen(line1) > width) {
-    line1 = colorize(modelSegment, colorBlue, config.color);
+    line1 = colorize(modelSegment, colorCyan, config.color);
   }
   line1 = fit(line1, width);
   let ctx = "Context ";
@@ -1026,7 +1025,7 @@ function renderMultiline(payload, config, width, modelSegment, ctxPct, quota, br
 ${line2}`;
 }
 function renderSingleLine(payload, config, width, modelSegment, ctxPct, quota, branch2 = "", stateLabel, stepSegment = "") {
-  const coloredBadge = colorize(modelSegment, colorBlue, config.color);
+  const coloredBadge = colorize(modelSegment, colorCyan, config.color);
   const cwdText = config.showCWD && payload.cwd ? colorize(withIcon(config, "\uF07C ", "") + import_node_path4.default.basename(payload.cwd), colorYellow, config.color) : "";
   const gitText = config.showGitBranch && branch2 !== "" ? colorize(renderGitSegment(branch2, config), colorMagenta, config.color) : "";
   const stepText = stepSegment !== "" ? colorize(stepSegment, colorMuted, config.color) : "";
